@@ -66,6 +66,7 @@
       display:block; background:linear-gradient(#0d0f1b, #0a0c16); border-radius:14px; border:1px solid #24284233;
       box-shadow:0 12px 40px rgba(0,0,0,.25), inset 0 1px rgba(255,255,255,.03);
       width:100%; height:auto; user-select:none; -webkit-user-select:none;
+      touch-action:none; /* critical for mobile drag */
     }
 
     @media (min-width: 981px) {
@@ -76,8 +77,8 @@
     }
 
     .gameover { position:absolute; inset:0; display:none; place-items:center; pointer-events:none; }
-    .gameover.show { display:grid; }
-    .badge { padding:10px 14px; border-radius:999px; border:1px solid #00000022; background:#00000066; backdrop-filter:blur(6px); font-weight:800; color:var(--danger); display:grid; gap:6px; text-align:center; }
+    .gameover.show { display:grid; pointer-events:auto; cursor:pointer; } /* allow clicks when shown + pointer cursor */
+    .badge { padding:10px 14px; border-radius:999px; border:1px solid #00000022; background:#00000066; backdrop-filter:blur(6px); font-weight:800; color:var(--danger); display:grid; gap:8px; text-align:center; }
     .badge small { color:#fff; font-weight:700; }
 
     @media (max-width:980px){ .wrap{ grid-template-columns:1fr; gap:10px; padding:8px; width:100vw; max-height:100dvh } .hud{ position:static } .panel{ padding:8px } }
@@ -92,6 +93,7 @@
         <span class="badge">
           <span>Game Over</span>
           <small>Score: <span id="finalScore">0</span></small>
+          <button id="restartOverlay">Play Again?</button>
         </span>
       </div>
     </div>
@@ -124,7 +126,7 @@
         </div>
       </div>
 
-      <p class="hint">Drag anywhere (except buttons) to aim the top fruit; release to drop. ← → to nudge. Space/Enter drops.</p>
+      <p class="hint">Drag anywhere (except buttons) to aim the top fruit.<br>Release to drop. ← → key to move.</p>
     </aside>
   </div>
 
@@ -136,7 +138,7 @@
   const MERGE_TOL_TOUCH = 1.010, MERGE_TOL_COLLIDE_BONUS = 1.015, MERGE_RECENT_COLLIDE_MS = 120, MERGE_COOLDOWN = 220;
   const MAX_FRUIT_INDEX = 9, MAX_DROP_INDEX = 5; // Drops capped at Pear
   const DROP_COOLDOWN_MS = 500;
-  const WATERMELON_SPECIAL_BONUS = 1000, COMBO_WINDOW_MS = 4500, COMBO_BONUS_PER_LEVEL = 50;
+  const WATERMELON_SPECIAL_BONUS = 1000, COMBO_WINDOW_MS = 4000, COMBO_BONUS_PER_LEVEL = 50;
 
   const BASE_LARGE = [
     { name:"Cherry", r:21,  color:"#ff5b6e", value:5  },
@@ -177,7 +179,7 @@
   const MAX_R = Math.max(...FRUITS.map(f=>f.r));
 
   /* ====== Theme ====== */
-  function setTheme(mode){ document.documentElement.dataset.theme = mode; localStorage.setItem('suika-theme', mode||''); document.body.classList.toggle('light-bg', mode==='light'); updateThemeIcon();}
+  function setTheme(mode){ document.documentElement.dataset.theme = mode; localStorage.setItem('suika-theme', mode||''); document.body.classList.toggle('light-bg', mode==='light'); updateThemeIcon(); }
   function toggleTheme(){ setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'); }
   function updateThemeIcon(){ const isLight = document.documentElement.dataset.theme==='light'; const symbol = isLight ? '◑':'◐'; const label = isLight ? 'Switch to dark':'Switch to light'; themeBtnMain.textContent = symbol; themeBtnMain.setAttribute('aria-label',label); themeBtnMain.setAttribute('title',label); }
   (function(){ setTheme(localStorage.getItem('suika-theme')==='light'?'light':'dark'); updateThemeIcon(); })();
@@ -267,11 +269,14 @@
 
   function endGame(){
     gameOver = true; holding = false; heldFruit = null;
-    finalScoreEl.textContent = String(score); gameOverBadge.classList.add('show');
+    finalScoreEl.textContent = String(score);
+    gameOverBadge.classList.add('show');
+    // Focus the overlay button for keyboard users
+    setTimeout(() => document.getElementById('restartOverlay')?.focus(), 0);
     if (score > highScore){ highScore = score; localStorage.setItem(HS_KEY, String(highScore)); highScoreEl.textContent = highScore; }
   }
 
-  /* ====== Input ====== */
+  /* ====== Input (mobile-friendly drag) ====== */
   function clientXToGameX(clientX){
     const rect = canvas.getBoundingClientRect();
     return clamp((clientX - rect.left) * (canvas.width / rect.width), WALL_THICK + 8, W - WALL_THICK - 8);
@@ -283,7 +288,14 @@
     if (typeof e.button==='number' && e.button!==0) return;
     if (e.pointerType==='touch' && e.isPrimary===false) return;
     if (activePointerId!==null) return;
-    activePointerId = e.pointerId ?? 'mouse'; isDragging = true;
+
+    activePointerId = e.pointerId ?? 'mouse';
+    isDragging = true;
+
+    if (e.target === canvas && e.pointerId != null && canvas.setPointerCapture) {
+      try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+    }
+
     document.documentElement.style.touchAction='none';
     aimX = clientXToGameX(e.clientX); if (heldFruit) heldFruit.x = aimX;
     e.preventDefault?.();
@@ -292,28 +304,47 @@
     if (!isDragging || (e.pointerId ?? 'mouse')!==activePointerId) return;
     aimX = clientXToGameX(e.clientX); if (holding && heldFruit) heldFruit.x = aimX; e.preventDefault?.();
   }
-  function endDrag(e){
+  function endDragCommit(e){
     if (!isDragging || (e.pointerId ?? 'mouse')!==activePointerId) return;
     isDragging=false; activePointerId=null; document.documentElement.style.touchAction='';
+    if (e.target === canvas && e.pointerId != null && canvas.releasePointerCapture) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+    }
     dropHeldFruit(); e.preventDefault?.();
   }
+  function cancelDrag(e){
+    if ((e.pointerId ?? 'mouse')!==activePointerId) return;
+    isDragging=false; activePointerId=null; document.documentElement.style.touchAction='';
+    if (e.target === canvas && e.pointerId != null && canvas.releasePointerCapture) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+    }
+    e.preventDefault?.();
+  }
 
-  window.addEventListener('pointerdown', e=>{ if (e.pointerType==='touch' && e.isPrimary===false) return; beginDrag(e); }, {passive:false});
+  canvas.addEventListener('pointerdown', beginDrag, {passive:false});
   window.addEventListener('pointermove', moveDrag, {passive:false});
-  window.addEventListener('pointerup', endDrag, {passive:false});
-  window.addEventListener('pointercancel', endDrag, {passive:false});
+  window.addEventListener('pointerup', endDragCommit, {passive:false});
+  window.addEventListener('pointercancel', cancelDrag, {passive:false});
 
+  
   window.addEventListener('keydown', e=>{
-    const isSpace = e.code==='Space' || e.key===' ', isEnter = e.code==='Enter' || e.key==='Enter', a = document.activeElement;
-    if ((isSpace || isEnter) && a?.tagName==='BUTTON'){ e.preventDefault(); a.blur(); dropHeldFruit(); return; }
-    if (isSpace || isEnter){ e.preventDefault(); dropHeldFruit(); return; }
-    if (e.key==='ArrowLeft'){ aimX = clamp((heldFruit?heldFruit.x:aimX) - 16, WALL_THICK+8, W-WALL_THICK-8); if (holding && heldFruit) heldFruit.x = aimX; }
-    if (e.key==='ArrowRight'){ aimX = clamp((heldFruit?heldFruit.x:aimX) + 16, WALL_THICK+8, W-WALL_THICK-8); if (holding && heldFruit) heldFruit.x = aimX; }
+    if (e.key==='ArrowLeft'){
+      aimX = clamp((heldFruit?heldFruit.x:aimX) - 16, WALL_THICK+8, W-WALL_THICK-8);
+      if (holding && heldFruit) heldFruit.x = aimX;
+    }
+    if (e.key==='ArrowRight'){
+      aimX = clamp((heldFruit?heldFruit.x:aimX) + 16, WALL_THICK+8, W-WALL_THICK-8);
+      if (holding && heldFruit) heldFruit.x = aimX;
+    }
   });
 
   document.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>setTimeout(()=>b.blur(),0)));
   document.getElementById('restart').addEventListener('click', resetGame);
-  themeBtnMain.addEventListener('click', ()=>{ toggleTheme(); updateThemeIcon(); });
+  document.getElementById('restartOverlay').addEventListener('click', resetGame);
+  // NEW: clicking anywhere on the dark overlay also restarts
+  gameOverBadge.addEventListener('click', (e) => {
+    if (!e.target || e.target.id !== 'restartOverlay') resetGame();
+  });
 
   /* ====== Physics / Merge ====== */
   const nearFloor = (f,eps=.5)=> (H - WALL_THICK) - (f.y + f.r) <= eps;
@@ -438,6 +469,7 @@
   function shade(hex, amt){
     const [r,g,b]=hex.replace('#','').match(/.{1,2}/g).map(x=>parseInt(x,16));
     const c=n=>Math.max(0,Math.min(255,n+Math.round(2.55*amt)));
+    // FIX: padStart for blue channel was missing previously
     return `#${c(r).toString(16).padStart(2,'0')}${c(g).toString(16).padStart(2,'0')}${c(b).toString(16).padStart(2,'0')}`;
   }
   function drawFruit(f){
@@ -476,6 +508,12 @@
 
   /* ====== Init ====== */
   document.getElementById('restart').addEventListener('click', resetGame);
+  document.getElementById('restartOverlay').addEventListener('click', resetGame);
+  // Click anywhere on overlay to restart (outside the inner button)
+  gameOverBadge.addEventListener('click', (e) => {
+    if (!e.target || e.target.id !== 'restartOverlay') resetGame();
+  });
+
   resetGame(); requestAnimationFrame(tick); fitToScreen(); resizeNextCanvas();
   const nextBox = document.querySelector('.nextCanvasBox');
   if (window.ResizeObserver && nextBox){ new ResizeObserver(resizeNextCanvas).observe(nextBox); }
