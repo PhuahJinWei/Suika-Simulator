@@ -63,6 +63,9 @@
     canvas {
       display: block; background: linear-gradient(#0d0f1b, #0a0c16);
       border-radius: 16px; border: 1px solid #242842; box-shadow: 0 12px 40px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.03);
+      user-select: none; -webkit-user-select: none; -ms-user-select: none;
+      /* Important for touch: prevents scroll/zoom while dragging */
+      touch-action: none;
     }
     .gameover {
       position: absolute; inset: 0; display: none; place-items: center; pointer-events: none;
@@ -104,7 +107,7 @@
       <div class="controls">
         <button id="restart">Restart (R)</button>
         <button id="toggleSlow">Toggle Slow-Mo</button>
-        <p class="hint">Rules: Fruits fall with gravity and bounce. Matching sizes that collide will merge into the next size. Gain points for each drop and for merges. The game ends if the spawn area is blocked.</p>
+        <p class="hint">Controls: Tap/drag the top fruit to aim. Release to drop. ← → to nudge aim. Space/Enter to drop. Left Shift toggles slow-mo.</p>
       </div>
     </aside>
   </div>
@@ -182,6 +185,10 @@
   let slowMo = false;
   let gameOver = false;
 
+  // Drag/Touch state
+  let isDragging = false;
+  let activePointerId = null;
+
   // Combo state
   let comboCount = 0;
   let lastMergeTime = 0;
@@ -208,6 +215,8 @@
     gameOver = false;
     comboCount = 0;
     lastMergeTime = 0;
+    isDragging = false;
+    activePointerId = null;
 
     gameOverBadge.classList.remove('show');
     holding = true;
@@ -366,30 +375,60 @@
     gameOverBadge.classList.add('show');
   }
 
-  // --- Input ---
-  canvas.addEventListener('mousemove', (e) => {
+  // === INPUT: Unified Pointer Events (mouse + touch) ===
+  function canvasToGameXFromClient(clientX) {
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    aimX = clamp(x, WALL_THICK + 8, W - WALL_THICK - 8);
-    if (holding && heldFruit) heldFruit.x = aimX;
-  }, { passive: true });
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    return clamp(x, WALL_THICK + 8, W - WALL_THICK - 8);
+  }
 
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!holding || gameOver) return;
+    // Only track one pointer (first touch)
+    if (activePointerId !== null) return;
+    activePointerId = e.pointerId;
+    isDragging = true;
+    canvas.setPointerCapture(activePointerId);
+    aimX = canvasToGameXFromClient(e.clientX);
+    if (heldFruit) heldFruit.x = aimX;
+    e.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isDragging || e.pointerId !== activePointerId) return;
+    aimX = canvasToGameXFromClient(e.clientX);
+    if (holding && heldFruit) heldFruit.x = aimX;
+    e.preventDefault();
+  }, { passive: false });
+
+  function endDragAndDropPointer(e) {
+    if (!isDragging || e.pointerId !== activePointerId) return;
+    isDragging = false;
+    try { canvas.releasePointerCapture(activePointerId); } catch {}
+    activePointerId = null;
+    dropHeldFruit();
+    e.preventDefault();
+  }
+
+  canvas.addEventListener('pointerup', endDragAndDropPointer, { passive: false });
+  canvas.addEventListener('pointercancel', endDragAndDropPointer, { passive: false });
+  // (No click handler needed; pointerup handles release-to-drop)
+
+  // Optional keyboard helpers remain
   window.addEventListener('keydown', (e) => {
     if (e.key === ' ' || e.key === 'Enter') dropHeldFruit();
     if (e.key === 'r' || e.key === 'R') resetGame();
     if (e.key === 'ArrowLeft') {
-      aimX = clamp(aimX - 16, WALL_THICK + 8, W - WALL_THICK - 8);
+      aimX = clamp((heldFruit ? heldFruit.x : aimX) - 16, WALL_THICK + 8, W - WALL_THICK - 8);
       if (holding && heldFruit) heldFruit.x = aimX;
     }
     if (e.key === 'ArrowRight') {
-      aimX = clamp(aimX + 16, WALL_THICK + 8, W - WALL_THICK - 8);
+      aimX = clamp((heldFruit ? heldFruit.x : aimX) + 16, WALL_THICK + 8, W - WALL_THICK - 8);
       if (holding && heldFruit) heldFruit.x = aimX;
     }
-    // Left Shift toggles slow-mo
-    if (e.code === 'ShiftLeft') slowMo = !slowMo;
+    if (e.code === 'ShiftLeft') slowMo = !slowMo; // Left Shift toggles slow-mo
   });
 
-  canvas.addEventListener('click', dropHeldFruit);
   document.getElementById('restart').addEventListener('click', resetGame);
   document.getElementById('toggleSlow').addEventListener('click', () => slowMo = !slowMo);
 
@@ -483,6 +522,7 @@
     if (t - a.mergedAt < MERGE_COOLDOWN || t - b.mergedAt < MERGE_COOLDOWN) return false;
 
     const dx = b.x - a.x, dy = b.y - a.y;
+    a.lastCollide ??= -1; b.lastCollide ??= -1;
     const dist = Math.hypot(dx, dy);
     const rsum = a.r + b.r;
 
@@ -494,40 +534,29 @@
     const cx = (a.x + b.x) / 2;
     const cy = (a.y + b.y) / 2;
 
-    // ---- Special: two Watermelons -> remove & bonus ----
+    // Special: two Watermelons -> remove & bonus
     if (a.type === MAX_FRUIT_INDEX && b.type === MAX_FRUIT_INDEX) {
-      // Remove from board
       fruits = fruits.filter(f => f !== a && f !== b);
-
-      // Pop FX
       popEffect(cx, cy, FRUITS[MAX_FRUIT_INDEX].color);
-
-      // Points: base Watermelon merge value + special + combo bonus
       const base = Math.round(FRUITS[MAX_FRUIT_INDEX].value * MERGE_SCORE_MULT) + WATERMELON_SPECIAL_BONUS;
       awardMergePoints(base, cx, cy);
-
       return true;
     }
 
-    // Normal merge: create next tier
+    // Normal merge
     const newType = Math.min(a.type + 1, MAX_FRUIT_INDEX);
     const merged = createFruit(newType, cx, cy);
-
-    // carry some momentum
     merged.vx = (a.vx + b.vx) * 0.25;
     merged.vy = (a.vy + b.vy) * 0.25;
     merged.mergedAt = t;
 
-    // Clamp inside playfield (floor & sides)
     if (merged.y + merged.r > H - WALL_THICK) { merged.y = H - WALL_THICK - merged.r - 0.01; if (merged.vy > 0) merged.vy = 0; }
     if (merged.x - merged.r < WALL_THICK) merged.x = WALL_THICK + merged.r;
     if (merged.x + merged.r > W - WALL_THICK) merged.x = W - WALL_THICK - merged.r;
 
-    // Replace
     fruits = fruits.filter(f => f !== a && f !== b);
     fruits.push(merged);
 
-    // FX + scoring (with combo)
     popEffect(merged.x, merged.y, FRUITS[newType].color);
     const base = Math.round(FRUITS[newType].value * MERGE_SCORE_MULT);
     awardMergePoints(base, merged.x, merged.y);
@@ -614,14 +643,11 @@
     if (visited.has(f)) return;
     visited.add(f);
 
-    // Move up
     f.y = Math.max(WALL_THICK + f.r, f.y - dy);
 
-    // Keep inside walls horizontally
     if (f.x - f.r < WALL_THICK) f.x = WALL_THICK + f.r;
     if (f.x + f.r > W - WALL_THICK) f.x = W - WALL_THICK - f.r;
 
-    // If we caused a new overlap above, propagate lift
     for (const g of fruits) {
       if (g === f) continue;
       const {pen} = overlapDepth(f, g);
@@ -633,11 +659,8 @@
   }
 
   function eliminateOverlapsUpward(maxCycles = 12) {
-    // Repeat until no overlaps or we hit the safety cap
     for (let cycle = 0; cycle < maxCycles; cycle++) {
       let worstPen = 0, worstA = null, worstB = null;
-
-      // Find the worst (largest) remaining penetration
       for (let i = 0; i < fruits.length; i++) {
         for (let j = i + 1; j < fruits.length; j++) {
           const a = fruits[i], b = fruits[j];
@@ -645,15 +668,12 @@
           if (pen > worstPen) { worstPen = pen; worstA = a; worstB = b; }
         }
       }
+      if (worstPen <= 0.0001) break;
 
-      if (worstPen <= 0.0001) break; // done
-
-      // Push the UPPER fruit up by the full penetration (propagate as chain)
       const upper = (worstA.y <= worstB.y) ? worstA : worstB;
       const visited = new Set();
       liftFruitChain(upper, worstPen + 0.01, visited);
 
-      // Final clamp so none stick into the floor after chain reaction
       for (const f of fruits) {
         if (f.y + f.r > H - WALL_THICK) f.y = H - WALL_THICK - f.r;
         if (f.x - f.r < WALL_THICK) f.x = WALL_THICK + f.r;
@@ -671,7 +691,6 @@
           let a = fruits[i], b = fruits[j];
           if (!a || !b) continue;
 
-          // Try to merge first
           if (!gameOver && tryMerge(a, b)) {
             pass = -1; i = fruits.length; break;
           }
@@ -690,17 +709,15 @@
     if (slowMo) dt *= 0.35;
     dt = Math.min(dt, 1/20);
 
-    // Substep integrate + solve + final no-overlap enforcement
     let remaining = dt;
     while (remaining > 0) {
       const step = Math.min(remaining, MAX_SUBSTEP);
       for (const f of fruits) integrate(f, step);
       solveContactsOnce();
-      eliminateOverlapsUpward(); // ensure no fruit can end overlapped
+      eliminateOverlapsUpward();
       remaining -= step;
     }
 
-    // Render
     ctx.clearRect(0, 0, W, H);
     drawBackground();
     fruits.slice().sort((a,b)=>a.y-b.y).forEach(drawFruit);
