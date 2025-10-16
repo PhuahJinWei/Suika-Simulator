@@ -1,53 +1,65 @@
-# Read the user's latest file, update the theme init to default to LIGHT on first visit,
-# then save as a new downloadable HTML file.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>スイケ Suike</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <style>
+    :root {
+      --bg: #0f1220; --panel: #171a2b; --accent: #66d9ef; --text: #e9ecf1; --muted: #99a2b2;
+      --danger: #ff6b6b; --ok: #9be564; --board-bg: #1b2144; --board-wall: #12162e; --aim: #66d9ef88;
+    }
+    :root[data-theme="light"] {
+      --bg: #f2f5fb; --panel: #ffffff; --accent: #0b74ff; --text: #1d2330; --muted: #6a7280;
+      --danger: #d44b4b; --ok: #4caf50; --board-bg: #f4f7ff; --board-wall: #d9dff0; --aim: #0b74ff66;
+    }
 
-import re, pathlib, json
+    * { box-sizing: border-box; }
+    html, body { width:100%; height:100dvh; margin:0; overflow:hidden; overscroll-behavior:none; touch-action:pan-x pan-y; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;
+      background: radial-gradient(1200px 800px at 70% -10%, #1a1f39 0%, var(--bg) 55%);
+      color: var(--text); display:grid; place-items:center;
+    }
+    body.light-bg { background: radial-gradient(1200px 800px at 70% -10%, #dfe6ff 0%, var(--bg) 55%); }
 
-src = pathlib.Path("/mnt/data/suike_v5.html")
-dst = pathlib.Path("/mnt/data/suike_v5-default-light.html")
+    .wrap {
+      display:grid; grid-template-columns:auto; gap:12px; padding:10px;
+      width:min(1100px,100vw); max-height:calc(100dvh - 20px); align-items:start; transform-origin:top center;
+    }
+    .panel {
+      background:var(--panel); border:1px solid #24284233; border-radius:14px; padding:10px;
+      box-shadow:0 10px 30px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .hud { 
+      display:grid; gap:10px; position:static; margin:0 auto; 
+      width: min(92vw, 520px);
+    }
+    .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
 
-text = src.read_text(encoding="utf-8")
+    .stat {
+      background: color-mix(in oklab, var(--panel), #000 10%);
+      border:1px solid #2a305733; border-radius:12px; padding:8px 10px; text-align:center;
+    }
+    .stat h3 { margin:0; font-size:12px; color:var(--muted); font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
+    .stat p { margin:6px 0 0; font-size:18px; font-weight:700; }
 
-# Replace the common one-liner init:
-# (function(){ setTheme(localStorage.getItem('suika-theme')==='light'?'light':'dark'); updateThemeIcon(); })();
-pattern1 = re.compile(
-    r"\(function\(\)\s*\{\s*setTheme\(localStorage\.getItem\('suika-theme'\)\s*===\s*'light'\s*\?\s*'light'\s*:\s*'dark'\)\s*;\s*updateThemeIcon\(\)\s*;\s*\}\)\s*\(\s*\)\s*;"
-)
+    .next { display:grid; justify-items:center; gap:6px; }
+    .next-title { font-weight:700; }
+    .fruit-preview { border-radius:50%; display:block; border:2px solid #00000014; box-shadow: inset 0 6px 10px #0004, 0 6px 14px #0002; background:transparent; }
+    .nextCanvasBox { width: clamp(96px, 28vw, 160px); }
+    #nextCanvas { width:100%; height:auto; display:block; }
 
-replacement_block = """(function () {
-  const saved = localStorage.getItem('suika-theme'); // "light" | "dark" | null
-  const initial = saved || 'light';                   // default to light on first visit
-  setTheme(initial);
-  updateThemeIcon();
-})();"""
-
-new_text, n1 = pattern1.subn(replacement_block, text)
-
-# Also replace a potential two-line variant:
-# (function(){ setTheme(localStorage.getItem('suika-theme')==='light'?'light':'dark'); updateThemeIcon(); })();
-if n1 == 0:
-    # Try a slightly looser match that still targets that init line safely
-    pattern2 = re.compile(
-        r"\(function\(\)\s*\{\s*setTheme\([^;]*\)\s*;\s*updateThemeIcon\(\)\s*;\s*\}\)\s*\(\s*\)\s*;"
-    )
-    new_text, n2 = pattern2.subn(replacement_block, text, count=1)
-else:
-    n2 = 0
-
-# If nothing replaced, we will append a safe initializer after the definition of updateThemeIcon()
-if n1 == 0 and n2 == 0:
-    # Insert right after the function updateThemeIcon definition's closing brace
-    new_text = re.sub(
-        r"(function\s+updateThemeIcon\s*\([^)]*\)\s*\{[^}]*\}\s*)",
-        r"\\1\n" + replacement_block + "\n",
-        text,
-        count=1,
-        flags=re.DOTALL
-    )
-
-dst.write_text(new_text, encoding="utf-8")
-
-print("Wrote:", str(dst))
+    .toolbar .row { justify-content:stretch; }
+    button {
+      appearance:none; border:1px solid #2a305733; color:var(--text);
+      background:linear-gradient(color-mix(in oklab, var(--panel), #000 6%), color-mix(in oklab, var(--panel), #000 12%));
+      padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer;
+      box-shadow:0 6px 14px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.05); line-height:1;
+    }
+    button:hover { filter:brightness(1.05); }
+    button:active { transform:translateY(1px); }
+    #toggleThemeMain { width:100%; font-size:130%; touch-action: manipulation; }
     #restart { width:100%; font-size:130%; touch-action: manipulation; }
     .hint { color:var(--muted); font-size:12px; line-height:1.35; text-align:center; }
 
@@ -284,18 +296,18 @@ print("Wrote:", str(dst))
   const WATERMELON_SPECIAL_BONUS = 100;
 
   const BASE_LARGE = [
-    { name:"Cherry", r:25,  color:"#ff5b6e", value:1  },
-    { name:"Strawberry", r:30, color:"#7be0d6", value:2  },
-    { name:"Grape", r:38, color:"#a067ff", value:3 },
-    { name:"Orange", r:50, color:"#ffb347", value:4 },
-    { name:"Apple", r:65, color:"#7fd36e", value:5 },
+    { name:"Cherry", r:28,  color:"#ff5b6e", value:1  },
+    { name:"Strawberry", r:40, color:"#7be0d6", value:2  },
+    { name:"Grape", r:49, color:"#a067ff", value:3 },
+    { name:"Orange", r:57, color:"#ffb347", value:4 },
+    { name:"Apple", r:66, color:"#7fd36e", value:5 },
     { name:"Pear", r:80, color:"#b7e071", value:6 },
     { name:"Peach", r:95, color:"#ffa8a0", value:10 },
-    { name:"Pineapple", r:120, color:"#ffe066", value:11 },
-    { name:"Melon", r:150, color:"#ff7d6b", value:12 },
-    { name:"Watermelon", r:200, color:"#41c77f", value:13 },
+    { name:"Pineapple", r:110, color:"#ffe066", value:11 },
+    { name:"Melon", r:140, color:"#ff7d6b", value:12 },
+    { name:"Watermelon", r:180, color:"#41c77f", value:13 },
   ];
-  const FRUITS = BASE_LARGE.map(f => ({...f, r: f.r * 0.9}));
+  const FRUITS = BASE_LARGE.map(f => ({...f, r: f.r * 1})); // 1:1 size ratio
 
   const DROP_SCORE_MULT = 1;
   const MERGE_SCORE_MULT = 2;
@@ -347,6 +359,13 @@ print("Wrote:", str(dst))
     themeBtnMain.setAttribute('aria-label', t('themeAria', lang));
     themeBtnMain.setAttribute('title', label);
   }
+
+(function () {
+  const saved = localStorage.getItem('suika-theme'); // "light" | "dark" | null
+  const initial = saved || 'light';                   // default to light on first visit
+  setTheme(initial);                                  // setTheme already updates the icon
+})();
+
   (function(){
     applyI18n();
     setTheme(localStorage.getItem('suika-theme')==='light'?'light':'dark');
@@ -354,11 +373,11 @@ print("Wrote:", str(dst))
   })();
 
   const SCORE_PHASES = [
-    { max: 200,     w:[55,40,5, 0, 0,0] },
-    { max: 500,     w:[48,38,12,2, 0,0] },
-    { max: 1200,    w:[40,33,15,7,5,0] },
-    { max: 2000,    w:[33,33,16,10,7,1] },
-    { max: Infinity,w:[30,20,20,15,10,5] },
+    { max: 200,     w:[60,35,5, 0, 0,0] },
+    { max: 500,     w:[55,35,9,1, 0,0] },
+    { max: 1000,    w:[50,35,11,3,1,0] },
+    { max: 2000,    w:[45,33,14,5,2,1] },
+    { max: Infinity,w:[40,28,16,10,4,2] },
   ];
   const pickPhase = s => SCORE_PHASES.find(p => s <= p.max).w;
   function pickWeightedIndex(w){
@@ -803,4 +822,3 @@ print("Wrote:", str(dst))
   </script>
 </body>
 </html>
-
