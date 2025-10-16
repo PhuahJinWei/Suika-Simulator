@@ -24,14 +24,17 @@
     body.light-bg { background: radial-gradient(1200px 800px at 70% -10%, #dfe6ff 0%, var(--bg) 55%); }
 
     .wrap {
-      display:grid; grid-template-columns:auto 360px; gap:12px; padding:10px;
+      display:grid; grid-template-columns:auto; gap:12px; padding:10px;
       width:min(1100px,100vw); max-height:calc(100dvh - 20px); align-items:start; transform-origin:top center;
     }
     .panel {
       background:var(--panel); border:1px solid #24284233; border-radius:14px; padding:10px;
       box-shadow:0 10px 30px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.03);
     }
-    .hud { display:grid; gap:10px; position:sticky; top:10px; }
+    .hud { 
+      display:grid; gap:10px; position:static; margin:0 auto; 
+      width: min(92vw, 520px);
+    }
     .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
 
     .stat {
@@ -56,52 +59,102 @@
     }
     button:hover { filter:brightness(1.05); }
     button:active { transform:translateY(1px); }
-    #toggleThemeMain { width:100%; font-size:18px; }
-    .hint { color:var(--muted); font-size:12px; line-height:1.35; }
+    #toggleThemeMain { width:100%; font-size:130%; touch-action: manipulation; }
+    #restart { width:100%; font-size:130%; touch-action: manipulation; }
+    .hint { color:var(--muted); font-size:12px; line-height:1.35; text-align:center; }
 
     .score-next { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; }
     .scores { display:grid; gap:10px; }
 
     #game {
-      display:block; background:linear-gradient(#0d0f1b, #0a0c16); border-radius:14px; border:1px solid #24284233;
+      display:block; margin: 0 auto;
+      background:linear-gradient(#0d0f1b, #0a0c16); border-radius:14px; border:1px solid #24284233;
       box-shadow:0 12px 40px rgba(0,0,0,.25), inset 0 1px rgba(255,255,255,.03);
       width:100%; height:auto; user-select:none; -webkit-user-select:none;
-      touch-action:none; /* critical for mobile drag */
+      touch-action:none;
+      max-width: 100%;
     }
 
     @media (min-width: 981px) {
       .wrap { grid-template-columns:max-content 360px; justify-content:center; }
       .panel:has(#game) { width:max-content; padding:12px; }
-      #game { width:500px; }          /* 30% bigger on desktop */
+      #game { 
+        width: auto;
+        height: auto;
+        max-height: 800px;      /* keep game within 800px height on laptop/desktop */
+        max-width: 640px;       /* don't let it grow too wide */
+      }
       .nextCanvasBox { width:140px; }
+      .hud { width:360px !important; }
     }
 
+    /* Overlays */
+    .overlay {
+      position:absolute; inset:0;
+      display:none; place-items:center;
+      pointer-events:none;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(1px);
+      border-radius: 14px;
+    }
+    .overlay.show { display:grid; pointer-events:auto; }
+    .overlay .card {
+      padding:16px 18px;
+      border-radius:14px;
+      border:1px solid #ffffff22;
+      background: color-mix(in oklab, var(--panel), #000 5%);
+      box-shadow:0 8px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+      display:grid; gap:10px; text-align:center;
+      min-width: 220px;
+    }
+    .overlay .title { font-weight:800; }
+    .overlay .subtle { color:var(--muted); font-size:12px; }
+
     .gameover { position:absolute; inset:0; display:none; place-items:center; pointer-events:none; }
-    .gameover.show { display:grid; pointer-events:auto; cursor:pointer; } /* allow clicks when shown + pointer cursor */
+    .gameover.show { display:grid; pointer-events:auto; cursor:pointer; }
     .badge { padding:10px 14px; border-radius:999px; border:1px solid #00000022; background:#00000066; backdrop-filter:blur(6px); font-weight:800; color:var(--danger); display:grid; gap:8px; text-align:center; }
     .badge small { color:#fff; font-weight:700; }
 
-    @media (max-width:980px){ .wrap{ grid-template-columns:1fr; gap:10px; padding:8px; width:100vw; max-height:100dvh } .hud{ position:static } .panel{ padding:8px } }
+    @media (max-width:980px){ .wrap{ grid-template-columns:1fr; gap:10px; padding:8px; width:100vw; max-height:100dvh } .panel{ padding:8px } }
     @media (max-width:420px){ .stat p{ font-size:16px } .stat h3{ font-size:11px } .next-title{ font-size:14px } .row{ gap:8px } }
   </style>
 </head>
 <body>
   <div class="wrap" id="wrap">
-    <div class="panel" style="position:relative;">
-      <canvas id="game" width="420" height="525" aria-label="Suika-like Game"></canvas>
+    <div class="panel" id="gamePanel" style="position:relative; margin: 0 auto;">
+      <!-- W/H updated here -->
+      <canvas id="game" width="400" height="560" aria-label="Suike"></canvas>
+
+      <!-- Start overlay -->
+      <div class="overlay" id="startOverlay">
+        <div class="card">
+          <div class="title" data-i18n="title">Suike</div>
+          <div class="subtle" data-i18n="hint">Drag anywhere (except buttons) to aim the top fruit.<br>Release to drop. ← → key to move.</div>
+          <button id="startBtn" aria-label="Start" data-i18n="start">Start</button>
+        </div>
+      </div>
+
+      <!-- Loading / Reset overlay -->
+      <div class="overlay" id="loadingOverlay">
+        <div class="card">
+          <div class="title" data-i18n="resetting">Resetting…</div>
+          <div class="subtle" data-i18n="resetTip">Dropping fruits and cleaning the board…</div>
+        </div>
+      </div>
+
       <div class="gameover" id="gameover">
         <span class="badge">
-          <span>Game Over</span>
-          <small>Score: <span id="finalScore">0</span></small>
-          <button id="restartOverlay">Play Again?</button>
+          <span data-i18n="gameOver">Game Over</span>
+          <small><span data-i18n="scoreLabel">Score</span>: <span id="finalScore">0</span></small>
+          <button id="restartOverlay" data-i18n="playAgain">Play Again?</button>
         </span>
       </div>
     </div>
 
-    <aside class="hud panel">
+    <aside class="hud panel" id="hudPanel" style="max-width:100%; margin:0 auto;">
       <div class="toolbar">
         <div class="row">
-          <button id="restart" style="flex:1;">Restart</button>
+          <button id="restart" style="flex:1;" title="Restart" aria-label="Restart">↻</button>
           <button id="toggleThemeMain" style="flex:1;" title="Toggle theme" aria-label="Toggle theme">◐</button>
         </div>
       </div>
@@ -109,51 +162,158 @@
       <div class="score-next">
         <div class="scores">
           <div class="stat">
-            <h3>High Score</h3>
+            <h3 data-i18n="highScore">High Score</h3>
             <p id="highScore">0</p>
           </div>
           <div class="stat">
-            <h3>Score</h3>
+            <h3 data-i18n="scoreLabel">Score</h3>
             <p id="score">0</p>
           </div>
         </div>
 
         <div class="next">
-          <div class="next-title">Next</div>
+          <div class="next-title" data-i18n="next">Next</div>
           <div class="nextCanvasBox">
             <canvas id="nextCanvas" class="fruit-preview"></canvas>
           </div>
         </div>
       </div>
 
-      <p class="hint">Drag anywhere (except buttons) to aim the top fruit.<br>Release to drop. ← → key to move.</p>
+      <p class="hint" id="hintText" data-i18n="hint">Drag anywhere (except buttons) to aim the top fruit.<br>Release to drop. ← → key to move.</p>
     </aside>
   </div>
 
   <script>
+  const I18N_STRINGS = {
+    en: {
+      title: "Suike",
+      start: "Start",
+      resetting: "Resetting…",
+      resetTip: "Dropping fruits and cleaning the board…",
+      gameOver: "Game Over",
+      playAgain: "Play Again?",
+      highScore: "High Score",
+      scoreLabel: "Score",
+      next: "Next",
+      hint: "Drag anywhere (except buttons) to aim the top fruit.<br>Release to drop. ← → key to move.",
+      restartAria: "Restart",
+      themeAria: "Toggle theme",
+      themeLight: "Switch to light",
+      themeDark: "Switch to dark"
+    },
+    ja: {
+      title: "スイケ",
+      start: "スタート",
+      resetting: "リセット中…",
+      resetTip: "フルーツを下に落として盤面をクリアしています…",
+      gameOver: "ゲームオーバー",
+      playAgain: "もう一度？",
+      highScore: "ハイスコア",
+      scoreLabel: "スコア",
+      next: "次",
+      hint: "（ボタン以外の）どこでもドラッグして狙いを定め、<br>離して落とします。← → キーで移動。",
+      restartAria: "リスタート",
+      themeAria: "テーマを切り替え",
+      themeLight: "ライトテーマに切り替え",
+      themeDark: "ダークテーマに切り替え"
+    },
+    zh: {
+      title: "Suike",
+      start: "开始",
+      resetting: "正在重置…",
+      resetTip: "让水果掉落清空棋盘…",
+      gameOver: "游戏结束",
+      playAgain: "再来一局？",
+      highScore: "最高分",
+      scoreLabel: "分数",
+      next: "下一个",
+      hint: "在任意位置（按钮除外）拖动以瞄准顶部水果，<br>松开手指投下。按 ← → 键移动。",
+      restartAria: "重新开始",
+      themeAria: "切换主题",
+      themeLight: "切换到浅色主题",
+      themeDark: "切换到深色主题"
+    },
+    ko: {
+      title: "Suike",
+      start: "시작",
+      resetting: "재설정 중…",
+      resetTip: "과일을 아래로 떨어뜨려 보드를 비우는 중…",
+      gameOver: "게임 오버",
+      playAgain: "다시 하시겠습니까?",
+      highScore: "최고 점수",
+      scoreLabel: "점수",
+      next: "다음",
+      hint: "어디든(버튼 제외) 드래그하여 위의 과일을 조준하고,<br>놓아서 떨어뜨리세요. ← → 키로 이동합니다.",
+      restartAria: "다시 시작",
+      themeAria: "테마 전환",
+      themeLight: "라이트 테마로 전환",
+      themeDark: "다크 테마로 전환"
+    }
+  };
+
+  function detectLang() {
+    const nav = navigator.languages && navigator.languages.length ? navigator.languages[0] : navigator.language || "en";
+    const base = nav.toLowerCase().split("-")[0];
+    if (I18N_STRINGS[base]) return base;
+    return "en";
+  }
+
+  function t(key, lang) {
+    const L = I18N_STRINGS[lang] || I18N_STRINGS.en;
+    return L[key] ?? I18N_STRINGS.en[key] ?? key;
+  }
+
+  function applyI18n(){
+    const lang = detectLang();
+    document.documentElement.lang = lang;
+    document.title = "スイケ " + t("title", lang);
+
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const key = el.getAttribute("data-i18n");
+      if (key === "hint") el.innerHTML = t(key, lang);
+      else el.textContent = t(key, lang);
+    });
+
+    const restartBtn = document.getElementById("restart");
+    const themeBtnMain = document.getElementById("toggleThemeMain");
+    if (restartBtn){
+      restartBtn.setAttribute("aria-label", t("restartAria", lang));
+      restartBtn.setAttribute("title", t("restartAria", lang));
+    }
+    if (themeBtnMain){
+      themeBtnMain.setAttribute("aria-label", t("themeAria", lang));
+      themeBtnMain.setAttribute("title", t("themeAria", lang));
+    }
+  }
+
   /* ====== Config ====== */
-  const W = 420, H = 525, WALL_THICK = 6;
+  const W = 400, H = 560, WALL_THICK = 6;  // <-- updated W/H
   const GRAVITY = 1400, RESTITUTION = 0.35, AIR_DAMPING = 0.0008, FRICTION = 0.02;
 
   const MERGE_TOL_TOUCH = 1.010, MERGE_TOL_COLLIDE_BONUS = 1.015, MERGE_RECENT_COLLIDE_MS = 120, MERGE_COOLDOWN = 220;
-  const MAX_FRUIT_INDEX = 9, MAX_DROP_INDEX = 5; // Drops capped at Pear
+  const MAX_FRUIT_INDEX = 9, MAX_DROP_INDEX = 5;
   const DROP_COOLDOWN_MS = 500;
-  const WATERMELON_SPECIAL_BONUS = 1000, COMBO_WINDOW_MS = 4000, COMBO_BONUS_PER_LEVEL = 50;
+  const WATERMELON_SPECIAL_BONUS = 100;
 
   const BASE_LARGE = [
-    { name:"Cherry", r:21,  color:"#ff5b6e", value:5  },
-    { name:"Strawberry", r:27, color:"#7be0d6", value:8  },
-    { name:"Grape", r:36, color:"#a067ff", value:12 },
-    { name:"Orange", r:48, color:"#ffb347", value:18 },
-    { name:"Apple", r:60, color:"#7fd36e", value:26 },
-    { name:"Pear", r:75, color:"#b7e071", value:36 },
-    { name:"Peach", r:93, color:"#ffa8a0", value:50 },
-    { name:"Pineapple", r:117, color:"#ffe066", value:70 },
-    { name:"Melon", r:147, color:"#ff7d6b", value:95 },
-    { name:"Watermelon", r:189, color:"#41c77f", value:130 },
+    { name:"Cherry", r:25,  color:"#ff5b6e", value:1  },
+    { name:"Strawberry", r:30, color:"#7be0d6", value:2  },
+    { name:"Grape", r:38, color:"#a067ff", value:3 },
+    { name:"Orange", r:50, color:"#ffb347", value:4 },
+    { name:"Apple", r:65, color:"#7fd36e", value:5 },
+    { name:"Pear", r:80, color:"#b7e071", value:6 },
+    { name:"Peach", r:95, color:"#ffa8a0", value:10 },
+    { name:"Pineapple", r:120, color:"#ffe066", value:11 },
+    { name:"Melon", r:150, color:"#ff7d6b", value:12 },
+    { name:"Watermelon", r:200, color:"#41c77f", value:13 },
   ];
   const FRUITS = BASE_LARGE.map(f => ({...f, r: f.r * 0.9}));
-  const DROP_SCORE_MULT = 1, MERGE_SCORE_MULT = 6;
+
+  const DROP_SCORE_MULT = 1;
+  const MERGE_SCORE_MULT = 2;
+  const COMBO_MAX_GAP_MS = 1500;
+  const COMBO_BONUS_PER_LEVEL = 2;
+  const COMBO_WINDOW_MS = 4000;
 
   /* ====== DOM / State ====== */
   const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
@@ -161,6 +321,11 @@
   const gameOverBadge = document.getElementById('gameover');
   const nextCanvas = document.getElementById('nextCanvas'), nextCtx = nextCanvas.getContext('2d');
   const themeBtnMain = document.getElementById('toggleThemeMain'), wrap = document.getElementById('wrap');
+  const hudPanel = document.getElementById('hudPanel');
+  const gamePanel = document.getElementById('gamePanel');
+  const startOverlay = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const loadingOverlay = document.getElementById('loadingOverlay');
 
   const HS_KEY = 'suika-highscore';
   let highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
@@ -171,6 +336,10 @@
   let holding = true, heldFruit = null, gameOver = false;
   let isDragging = false, activePointerId = null;
   let comboCount = 0, lastMergeTime = 0, lastDropTime = -Infinity;
+  let dropCounter = 0;
+  let lastMergeDropCounter = -1;
+
+  let floorOpen = false;
 
   const getVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const boardColors = () => ({ board:getVar('--board-bg')||'#1b2144', wall:getVar('--board-wall')||'#12162e', aim:getVar('--aim')||'#66d9ef88' });
@@ -181,16 +350,27 @@
   /* ====== Theme ====== */
   function setTheme(mode){ document.documentElement.dataset.theme = mode; localStorage.setItem('suika-theme', mode||''); document.body.classList.toggle('light-bg', mode==='light'); updateThemeIcon(); }
   function toggleTheme(){ setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'); }
-  function updateThemeIcon(){ const isLight = document.documentElement.dataset.theme==='light'; const symbol = isLight ? '◑':'◐'; const label = isLight ? 'Switch to dark':'Switch to light'; themeBtnMain.textContent = symbol; themeBtnMain.setAttribute('aria-label',label); themeBtnMain.setAttribute('title',label); }
-  (function(){ setTheme(localStorage.getItem('suika-theme')==='light'?'light':'dark'); updateThemeIcon(); })();
+  function updateThemeIcon(){
+    const lang = document.documentElement.lang || detectLang();
+    const isLight = document.documentElement.dataset.theme==='light';
+    const symbol = isLight ? '◑':'◐';
+    const label = isLight ? t('themeDark', lang) : t('themeLight', lang);
+    themeBtnMain.textContent = symbol;
+    themeBtnMain.setAttribute('aria-label', t('themeAria', lang));
+    themeBtnMain.setAttribute('title', label);
+  }
+  (function(){
+    applyI18n();
+    setTheme(localStorage.getItem('suika-theme')==='light'?'light':'dark');
+    updateThemeIcon();
+  })();
 
-  /* ====== Spawn weights (cap at Pear) ====== */
   const SCORE_PHASES = [
-    { max: 200,     w:[42,30,16, 8, 3,1] },
-    { max: 600,     w:[30,28,20,12, 7,3] },
-    { max: 1200,    w:[20,24,22,16,12,6] },
-    { max: 2400,    w:[14,18,22,20,16,10] },
-    { max: Infinity,w:[10,14,20,22,18,16] },
+    { max: 200,     w:[55,40,5, 0, 0,0] },
+    { max: 500,     w:[48,38,12,2, 0,0] },
+    { max: 1200,    w:[40,33,15,7,5,0] },
+    { max: 2000,    w:[33,33,16,10,7,1] },
+    { max: Infinity,w:[30,20,20,15,10,5] },
   ];
   const pickPhase = s => SCORE_PHASES.find(p => s <= p.max).w;
   function pickWeightedIndex(w){
@@ -202,11 +382,42 @@
 
   /* ====== Game ====== */
   function resetGame(){
-    fruits.length = 0; score = 0; comboCount = 0; lastMergeTime = 0; isDragging = false; activePointerId = null; gameOver = false;
+    fruits.length = 0;
+    score = 0;
+    comboCount = 0;
+    lastMergeTime = 0;
+    isDragging = false;
+    activePointerId = null;
+    gameOver = false;
     gameOverBadge.classList.remove('show');
     nextTypeIdx = Math.min(pickWeightedIndex(pickPhase(0)), MAX_DROP_INDEX);
-    holding = true; heldFruit = createFruit(nextTypeIdx, spawn.x, spawn.y); aimX = W/2;
-    updateNextPreview(); scoreEl.textContent = score; lastDropTime = -Infinity;
+    holding = true;
+    heldFruit = createFruit(nextTypeIdx, spawn.x, spawn.y);
+    aimX = W/2;
+    updateNextPreview();
+    scoreEl.textContent = score;
+    lastDropTime = -Infinity;
+    dropCounter = 0;
+    lastMergeDropCounter = -1;
+    requestAnimationFrame(adjustCanvasToFit);
+  }
+
+  function fancyReset(){
+    loadingOverlay.classList.add('show');
+    floorOpen = true;
+    holding = false;
+    heldFruit = null;
+    for (const f of fruits){ f.vy = Math.max(f.vy, 400); }
+
+    setTimeout(()=>{
+      floorOpen = false;
+      resetGame();
+      loadingOverlay.classList.remove('show');
+    }, 1000);
+  }
+
+  function isAnyOverlayActive(){
+    return startOverlay.classList.contains('show') || loadingOverlay.classList.contains('show') || gameOverBadge.classList.contains('show');
   }
 
   function drawFruitBubble(c, cx, cy, r, color){
@@ -229,7 +440,10 @@
     const def = FRUITS[nextTypeIdx];
     nextCtx.clearRect(0,0,nextCanvas.width,nextCanvas.height);
     const PAD = Math.round(nextCanvas.width * 0.07);
-    const r = Math.max(6, def.r * ((nextCanvas.width/2 - PAD) / MAX_R));
+    const pearR = FRUITS[5].r;
+    const targetMaxR = (nextCanvas.width/2 - PAD) * 0.9;
+    const scale = targetMaxR / pearR;
+    const r = Math.max(6, def.r * scale);
     drawFruitBubble(nextCtx, nextCanvas.width/2, nextCanvas.height/2, r, def.color);
   }
 
@@ -255,12 +469,13 @@
   }
 
   function dropHeldFruit(){
-    if (!holding || gameOver) return;
+    if (!holding || gameOver || isAnyOverlayActive()) return;
     const t = performance.now(); if (t - lastDropTime < DROP_COOLDOWN_MS) return;
     if (!canSpawnAt(heldFruit.x, heldFruit.type)) { endGame(); return; }
 
     fruits.push(heldFruit);
     addScore(Math.round(FRUITS[heldFruit.type].value * DROP_SCORE_MULT));
+    dropCounter++;
     lastDropTime = t; holding = false; heldFruit = null;
 
     chooseNext();
@@ -271,12 +486,10 @@
     gameOver = true; holding = false; heldFruit = null;
     finalScoreEl.textContent = String(score);
     gameOverBadge.classList.add('show');
-    // Focus the overlay button for keyboard users
     setTimeout(() => document.getElementById('restartOverlay')?.focus(), 0);
     if (score > highScore){ highScore = score; localStorage.setItem(HS_KEY, String(highScore)); highScoreEl.textContent = highScore; }
   }
 
-  /* ====== Input (mobile-friendly drag) ====== */
   function clientXToGameX(clientX){
     const rect = canvas.getBoundingClientRect();
     return clamp((clientX - rect.left) * (canvas.width / rect.width), WALL_THICK + 8, W - WALL_THICK - 8);
@@ -284,7 +497,7 @@
   const isInteractiveTarget = el => !!el?.closest('button, a, input, select, textarea, [role="button"], [role="link"], [contenteditable], [data-ignore-drag]');
 
   function beginDrag(e){
-    if (!holding || gameOver || isInteractiveTarget(e.target)) return;
+    if (!holding || gameOver || isInteractiveTarget(e.target) || isAnyOverlayActive()) return;
     if (typeof e.button==='number' && e.button!==0) return;
     if (e.pointerType==='touch' && e.isPrimary===false) return;
     if (activePointerId!==null) return;
@@ -326,7 +539,7 @@
   window.addEventListener('pointerup', endDragCommit, {passive:false});
   window.addEventListener('pointercancel', cancelDrag, {passive:false});
 
-  
+
   window.addEventListener('keydown', e=>{
     if (e.key==='ArrowLeft'){
       aimX = clamp((heldFruit?heldFruit.x:aimX) - 16, WALL_THICK+8, W-WALL_THICK-8);
@@ -339,17 +552,24 @@
   });
 
   document.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>setTimeout(()=>b.blur(),0)));
-  document.getElementById('restart').addEventListener('click', resetGame);
-  document.getElementById('restartOverlay').addEventListener('click', resetGame);
-  // NEW: clicking anywhere on the dark overlay also restarts
+  document.getElementById('restart').addEventListener('click', fancyReset);
+  document.getElementById('restartOverlay').addEventListener('click', fancyReset);
   gameOverBadge.addEventListener('click', (e) => {
-    if (!e.target || e.target.id !== 'restartOverlay') resetGame();
+    if (!e.target || e.target.id !== 'restartOverlay') fancyReset();
+  });
+  themeBtnMain.addEventListener('click', () => {
+    toggleTheme();
+    updateThemeIcon();
   });
 
-  /* ====== Physics / Merge ====== */
+  // Start overlay behavior
+  document.getElementById('startBtn').addEventListener('click', () => {
+    startOverlay.classList.remove('show');
+  });
+
   const nearFloor = (f,eps=.5)=> (H - WALL_THICK) - (f.y + f.r) <= eps;
   const nearLeft  = (f,eps=.5)=> (f.x - f.r) - WALL_THICK <= eps;
-  const nearRight = (f,eps=.5)=> (W - WALL_THICK) - (f.x + f.r) <= eps;
+  const nearRight = (f,eps=.5)=> (f.x + f.r) - (W - WALL_THICK) >= -eps;
 
   function integrate(f, dt){
     f.vy += GRAVITY * dt;
@@ -357,10 +577,15 @@
     f.vy *= (1 - AIR_DAMPING * dt * 1000);
     f.x += f.vx * dt; f.y += f.vy * dt;
 
+    // Side walls always active
     if (f.x - f.r < WALL_THICK){ f.x = WALL_THICK + f.r; f.vx = -f.vx * RESTITUTION; f.vy *= (1 - FRICTION); }
     else if (f.x + f.r > W - WALL_THICK){ f.x = W - WALL_THICK - f.r; f.vx = -f.vx * RESTITUTION; f.vy *= (1 - FRICTION); }
-    if (f.y + f.r > H - WALL_THICK){ f.y = H - WALL_THICK - f.r; f.vy = -f.vy * RESTITUTION; f.vx *= (1 - FRICTION); }
-    if (f.y - f.r < WALL_THICK){ f.y = WALL_THICK + f.r; f.vy = Math.abs(f.vy) * RESTITUTION; }
+
+    // Floor: disabled when floorOpen (reset animation)
+    if (!floorOpen){
+      if (f.y + f.r > H - WALL_THICK){ f.y = H - WALL_THICK - f.r; f.vy = -f.vy * RESTITUTION; f.vx *= (1 - FRICTION); }
+      if (f.y - f.r < WALL_THICK){ f.y = WALL_THICK + f.r; f.vy = Math.abs(f.vy) * RESTITUTION; }
+    }
   }
 
   function resolveFruitCollision(a,b){
@@ -369,15 +594,19 @@
     let ax = -nx * overlap * (mB/totalM), ay = -ny * overlap * (mB/totalM);
     let bx =  nx * overlap * (mA/totalM), by =  ny * overlap * (mA/totalM);
 
-    if (nearFloor(a) && ay>0){ bx += -ax; by += -ay; ax=ay=0; }
-    if (nearFloor(b) && by>0){ ax += -bx; ay += -by; bx=by=0; }
+    if (!floorOpen){ // only clamp against floor when not open
+      if (nearFloor(a) && ay>0){ bx += -ax; by += -ay; ax=ay=0; }
+      if (nearFloor(b) && by>0){ ax += -bx; ay += -by; bx=by=0; }
+    }
     if (nearLeft(a) && ax<0){ bx += -ax; ax=0; }
     if (nearRight(a) && ax>0){ bx += -ax; ax=0; }
     if (nearLeft(b) && bx<0){ ax += -bx; bx=0; }
     if (nearRight(b) && bx>0){ ax += -bx; bx=0; }
 
     a.x+=ax; a.y+=ay; b.x+=bx; b.y+=by;
-    a.y = Math.min(a.y, H - WALL_THICK - a.r); b.y = Math.min(b.y, H - WALL_THICK - b.r);
+    if (!floorOpen){
+      a.y = Math.min(a.y, H - WALL_THICK - a.r); b.y = Math.min(b.y, H - WALL_THICK - b.r);
+    }
     a.x = clamp(a.x, WALL_THICK + a.r, W - WALL_THICK - a.r);
     b.x = clamp(b.x, WALL_THICK + b.r, W - WALL_THICK - b.r);
 
@@ -393,7 +622,7 @@
   }
 
   function tryMerge(a,b){
-    if (a.type!==b.type) return false;
+    if (a.type!==b.type || floorOpen) return false;
     const t=performance.now();
     if (t-a.mergedAt < MERGE_COOLDOWN || t-b.mergedAt < MERGE_COOLDOWN) return false;
 
@@ -412,7 +641,7 @@
     const merged = createFruit(Math.min(a.type+1, MAX_FRUIT_INDEX), cx, cy);
     merged.vx = (a.vx+b.vx)*0.25; merged.vy = (a.vy+b.vy)*0.25; merged.mergedAt = t;
 
-    if (merged.y + merged.r > H - WALL_THICK){ merged.y = H - WALL_THICK - merged.r - 0.01; if (merged.vy>0) merged.vy=0; }
+    if (!floorOpen && merged.y + merged.r > H - WALL_THICK){ merged.y = H - WALL_THICK - merged.r - 0.01; if (merged.vy>0) merged.vy=0; }
     merged.x = clamp(merged.x, WALL_THICK+merged.r, W-WALL_THICK-merged.r);
 
     fruits = fruits.filter(f=>f!==a && f!==b); fruits.push(merged);
@@ -432,10 +661,17 @@
     }
   }
 
-  function awardMergePoints(base,x,y){
-    const t=performance.now(); comboCount = (t-lastMergeTime <= COMBO_WINDOW_MS) ? comboCount+1 : 1; lastMergeTime=t;
-    const bonus = (comboCount>1) ? (comboCount-1)*COMBO_BONUS_PER_LEVEL : 0;
-    addScore(base + bonus); if (comboCount>1) addFloatText(`x${comboCount} COMBO! +${bonus}`, x, y-10, "#ffd166");
+  function awardMergePoints(base, x, y){
+    const t = performance.now();
+    const consecutiveDrop = (dropCounter === lastMergeDropCounter + 1);
+    const withinTime = (t - lastMergeTime <= COMBO_MAX_GAP_MS);
+    const comboWas = comboCount;
+    comboCount = (consecutiveDrop || withinTime) ? comboCount + 1 : 1;
+    lastMergeTime = t;
+    lastMergeDropCounter = dropCounter;
+    const bonus = (comboCount > 1) ? (comboCount - 1) * COMBO_BONUS_PER_LEVEL : 0;
+    addScore(base + bonus);
+    if (comboCount > 1) addFloatText(`x${comboCount} COMBO! +${bonus}`, x, y - 10, "#ffd166");
   }
 
   function overlapDepth(a,b){ const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy); return { pen:(a.r+b.r)-d, dist:d }; }
@@ -452,7 +688,7 @@
       }
       if (worst<=0.0001) break;
       const upper = (A.y<=B.y)?A:B; liftFruitChain(upper, worst+0.01, new Set());
-      for (const f of fruits){ f.y = Math.min(f.y, H - WALL_THICK - f.r); f.x = clamp(f.x, WALL_THICK+f.r, W-WALL_THICK-f.r); }
+      for (const f of fruits){ if (!floorOpen) f.y = Math.min(f.y, H - WALL_THICK - f.r); f.x = clamp(f.x, WALL_THICK+f.r, W-WALL_THICK-f.r); }
     }
   }
 
@@ -468,8 +704,7 @@
 
   function shade(hex, amt){
     const [r,g,b]=hex.replace('#','').match(/.{1,2}/g).map(x=>parseInt(x,16));
-    const c=n=>Math.max(0,Math.min(255,n+Math.round(2.55*amt)));
-    // FIX: padStart for blue channel was missing previously
+    const c=n=>Math.max(0,Math.min(255,n+Math.round(2.55* amt)));
     return `#${c(r).toString(16).padStart(2,'0')}${c(g).toString(16).padStart(2,'0')}${c(b).toString(16).padStart(2,'0')}`;
   }
   function drawFruit(f){
@@ -488,33 +723,93 @@
     if (holding && !gameOver){ ctx.strokeStyle=aim; ctx.lineWidth=2; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(aimX,0); ctx.lineTo(aimX,H); ctx.stroke(); ctx.setLineDash([]); }
   }
 
-  /* ====== Fit & Loop ====== */
-  function fitToScreen(){
+  function px(n){ return parseFloat(n||0) || 0; }
+
+  function adjustCanvasToFit(){
+    if (window.innerWidth > 980){
+      canvas.style.removeProperty('width');
+      canvas.style.removeProperty('height');
+      wrap.style.transform = '';
+
+      fitToScreenDesktop();
+      resizeNextCanvas();
+      return;
+    }
+
+    wrap.style.transform = 'scale(1)';
+    const vh = window.innerHeight, vw = window.innerWidth;
+    const aspect = canvas.height / canvas.width;
+
+    const wrapStyles = getComputedStyle(wrap);
+    const gamePanelStyles = getComputedStyle(gamePanel);
+
+    const wrapPadY = px(wrapStyles.paddingTop) + px(wrapStyles.paddingBottom);
+    const gap = px(wrapStyles.gap) || 10;
+    const gamePanelPadY = px(gamePanelStyles.paddingTop) + px(gamePanelStyles.paddingBottom);
+    const hudHeight = hudPanel.offsetHeight;
+
+    const otherHeight = wrapPadY + gap + gamePanelPadY + hudHeight;
+    const maxCanvasDisplayHeight = Math.max(120, vh - otherHeight);
+
+    const wrapPadX = px(wrapStyles.paddingLeft) + px(wrapStyles.paddingRight);
+    const gamePanelPadX = px(gamePanelStyles.paddingLeft) + px(gamePanelStyles.paddingRight);
+    const availableWidth = Math.max(200, vw - wrapPadX - gamePanelPadX);
+
+    const widthByHeight = Math.floor(maxCanvasDisplayHeight / aspect);
+    const targetWidth = Math.min(availableWidth, widthByHeight);
+
+    canvas.style.width = targetWidth + 'px';
+
+    hudPanel.style.width = '';
+    hudPanel.style.margin = '0 auto';
+
+    resizeNextCanvas();
+  }
+
+  function fitToScreenDesktop(){
+    canvas.style.removeProperty('width');
     wrap.style.transform='scale(1)';
     const M=12, rect=wrap.getBoundingClientRect();
     const scale=Math.min(1,(innerWidth-M)/rect.width,(innerHeight-M)/rect.height);
     wrap.style.transform=`scale(${Math.max(0.7,scale)})`;
   }
-  addEventListener('resize', ()=>{ fitToScreen(); resizeNextCanvas(); });
-  addEventListener('orientationchange', ()=>setTimeout(()=>{ fitToScreen(); resizeNextCanvas(); },100));
+
+  function fitToScreen(){
+    if (window.innerWidth <= 980){
+      adjustCanvasToFit();
+    } else {
+      fitToScreenDesktop();
+      resizeNextCanvas();
+    }
+  }
+
+  addEventListener('resize', ()=>{ fitToScreen(); });
+  addEventListener('orientationchange', ()=>setTimeout(()=>{ fitToScreen(); },100));
 
   let last = performance.now();
   function tick(){
     const t=performance.now(); let dt=Math.min((t-last)/1000, 1/20); last=t;
     while (dt>0){ const step=Math.min(dt,1/120); for (const f of fruits) integrate(f,step); solveContactsOnce(); eliminateOverlapsUpward(); dt-=step; }
+    if (floorOpen){
+      for (let i=fruits.length-1;i>=0;i--){
+        if (fruits[i].y - fruits[i].r > H + 80) fruits.splice(i,1);
+      }
+    }
     ctx.clearRect(0,0,W,H); drawBackground(); fruits.slice().sort((a,b)=>a.y-b.y).forEach(drawFruit); drawHeld(); drawPops(); drawFloatTexts();
     requestAnimationFrame(tick);
   }
 
-  /* ====== Init ====== */
-  document.getElementById('restart').addEventListener('click', resetGame);
-  document.getElementById('restartOverlay').addEventListener('click', resetGame);
-  // Click anywhere on overlay to restart (outside the inner button)
+  document.getElementById('restart').addEventListener('click', fancyReset);
+  document.getElementById('restartOverlay').addEventListener('click', fancyReset);
   gameOverBadge.addEventListener('click', (e) => {
-    if (!e.target || e.target.id !== 'restartOverlay') resetGame();
+    if (!e.target || e.target.id !== 'restartOverlay') fancyReset();
   });
 
-  resetGame(); requestAnimationFrame(tick); fitToScreen(); resizeNextCanvas();
+  // Initial state: prepare game and show the Start overlay
+  resetGame();
+  startOverlay.classList.add('show');
+
+  requestAnimationFrame(tick); fitToScreen(); resizeNextCanvas();
   const nextBox = document.querySelector('.nextCanvasBox');
   if (window.ResizeObserver && nextBox){ new ResizeObserver(resizeNextCanvas).observe(nextBox); }
   </script>
