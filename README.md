@@ -4,7 +4,8 @@
 
 <a href="https://phuahjinwei.github.io/Suika-Simulator/src/suikeGame.html">here</a>
 <br/>
-<img src="src/img/readme_demoPic.jpg" alt="demoPic" />
+<br/>
+</center><img src="src/img/readme_demoPic.jpg" alt="demoPic" /></center>
 <br/>
 
 ## On going issue:
