@@ -3,8 +3,8 @@
 ## Instantly Play:
 
 <a href="https://phuahjinwei.github.io/Suika-Simulator/src/suikeGame.html">here</a>
+<img src="src/img/concept_PageDesign_v1.jpg" alt="Conversion Image" />
 
-<br/><br/>
 <br/><br/>
 
 ## On going issue:
