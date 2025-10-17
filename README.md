@@ -1,11 +1,8 @@
 # Suika-Simular Game - Suike
 
-## Instantly Play:
-
-<a href="https://phuahjinwei.github.io/Suika-Simulator/src/suikeGame.html">here</a>
+## Instantly Play ---> <a href="https://phuahjinwei.github.io/Suika-Simulator/src/suikeGame.html">here</a>
 <br/>
-<br/>
-</center><img src="src/img/readme_demoPic.jpg" alt="demoPic" /></center>
+<img src="src/img/readme_demoPic.jpg" alt="demoPic" width="70%">
 <br/>
 
 ## On going issue:
